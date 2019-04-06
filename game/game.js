@@ -1,0 +1,223 @@
+var game = {
+	running: true,
+	width: 640,
+	height: 360,
+	score: 0,
+	sprites: { platform: null, background: null, block: null, ball: null},
+	ball: {},
+	platform: {},
+	blocks: [],
+	rows: 4,
+    cols: 8,
+    setEvents: function() {
+		window.addEventListener('keydown', function(e){
+			if ( e.keyCode == 32 ) {
+				game.platform.releaseBall();
+			} else if ( e.keyCode == 37 ) {
+				game.platform.dx = -game.platform.velocity;
+			} else if ( e.keyCode == 39 ) {
+				game.platform.dx = game.platform.velocity;
+			}
+		});
+		window.addEventListener('keyup', function(e){
+			game.platform.stop();
+		});
+    },
+	init: function(){
+		this.ctx = document.getElementById("mycanvas").getContext("2d");
+		this.ctx.font = '20px Arial';
+        this.ctx.fillStyle = '#FFFFFF';
+        this.setEvents();
+	},
+	preload: function(callback){
+        var loaded = 0;
+        var required = Object.keys(game.sprites).length;
+		for (var key in this.sprites) {
+			this.sprites[key] = new Image();
+			this.sprites[key].src = 'img/' + key + '.png';
+			this.sprites[key].addEventListener('load', function() {
+                ++loaded;
+                if (loaded >= required) {
+                    callback();
+                }
+            });
+		}
+	},
+	create: function(){
+		for ( var row = 0; row < this.rows; row++ ) {
+			for ( var col = 0; col < this.cols; col++ ) {
+				this.blocks.push({
+					x: 64 * col + 65,
+					y: 24 * row + 35,
+					width: 60,
+					height: 20,
+					isAlive: true
+				});
+			}
+		}
+	},
+	update: function() {
+		if ( this.ball.collide(this.platform) ) {
+			this.ball.bumpPuddle(this.platform);
+		}
+
+		if( this.ball.dx || this.ball.dy ) {
+			this.ball.move();
+		}
+
+		if( this.platform.dx ) {
+			this.platform.move();
+		}
+
+		this.blocks.forEach(function(element, index){
+			if ( element.isAlive ) {
+				if( this.ball.collide(element) ) {
+					this.ball.bumpBlock(element);
+				}
+			}
+		}, this);
+
+		this.ball.checkBounds();
+	},
+	render: function() {
+		this.ctx.clearRect(0, 0, this.width, this.height);
+		this.ctx.drawImage(this.sprites.background, 0, 0);
+		this.ctx.drawImage(this.sprites.ball, this.ball.width * this.ball.frame, 0, this.ball.width, this.ball.height, this.ball.x, this.ball.y, this.ball.width, this.ball.height);
+		this.ctx.drawImage(this.sprites.platform, this.platform.x, this.platform.y);
+		this.blocks.forEach(function(element){
+			if ( element.isAlive ) {
+				this.ctx.drawImage(this.sprites.block, element.x, element.y);
+			}
+		}, this);
+
+		this.ctx.fillText('Score: ' + this.score, 15, this.height - 15);
+
+	},
+	run: function() {
+		this.update();
+		this.render();
+
+		if (this.running) {
+			window.requestAnimationFrame(function(){
+				game.run();
+			}); 
+		}	 
+	},
+	start: function(){
+		this.init();
+		this.preload(function(){
+            game.create();
+            game.run();
+        });
+	}
+};
+
+game.ball = {
+	frame: 0,
+	x: 340,
+	y: 278,
+	velocity: 3,
+	dx: 0,
+	dy: 0,
+	width: 20,
+	height: 22,
+	move: function(){
+		this.x += this.dx;
+		this.y += this.dy;
+	},
+	animate: function(){
+		this.animation = setInterval(function(){
+			++game.ball.frame;
+			if ( game.ball.frame > 3 ) {
+				game.ball.frame = 0;
+			}
+		}, 100);
+	},
+	jump: function(){
+		this.dy = this.dx = -this.velocity;
+		this.animate();
+	},
+	collide: function(element) {
+		var x = this.x + this.dx;
+		var y = this.y + this.dy;
+
+		if ( x + this.width > element.x &&
+			x < element.x + element.width &&
+			y + this.height > element.y &&
+			y < element.y + element.height) {
+			return true;
+		}
+		return false;
+	},
+	onTheLeftSide: function(platform) {
+		return (this.x + this.width / 2) < (platform.x + platform.width / 2);
+	},
+	checkBounds: function(){
+		var x = this.x + this.dx;
+		var y = this.y + this.dy;
+
+		if ( x < 0  ) {
+			this.x = 0;
+			this.dx = this.velocity;
+		} else if ( x + this.width > game.width ) {
+			this.x = game.width - this.width;
+			this.dx = -this.velocity;
+		} else if ( y < 0 ) {
+			this.y = 0;
+			this.dy = this.velocity;
+		} else if( this.y + this.height >= game.height ) {
+			this.over('Game Over');
+		}
+	},
+	bumpPuddle: function(platform){
+		this.dy = -this.velocity;
+		this.dx = this.onTheLeftSide(platform) ? -this.velocity : this.velocity;
+	},
+	bumpBlock: function(block){
+		block.isAlive = false;
+		this.dy *= -1;
+		++game.score;
+		if ( game.score == game.blocks.length ) {
+			this.over('You win!');
+		}
+	},
+	over: function(message) {
+		game.running = false;
+		alert(message);
+		window.location.reload();
+	}
+};
+
+game.platform = {
+	x: 300,
+	y: 300,
+	dx: 0,
+	velocity: 6,
+	width: 100,
+	height: 14,
+	ball: game.ball,
+	stop: function(){
+		this.dx = 0;
+
+		if ( this.ball ) {
+			this.ball.dx = 0;
+		}
+	},
+	move: function(){
+		this.x += this.dx;
+
+		if ( this.ball ) {
+			this.ball.x += this.dx;
+		}
+	},
+	releaseBall: function(){
+		if ( this.ball ) {
+			this.ball.jump();
+			this.ball = false;
+		}
+	}
+};
+
+window.addEventListener("load",function() {
+	game.start();
+});
